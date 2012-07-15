@@ -1,0 +1,115 @@
+#!env python
+#-*- coding: utf-8 -*- 
+
+import os, re, sys, shutil
+from subprocess import Popen, PIPE 
+from optparse import OptionParser
+from xml.dom import minidom
+import unittest
+
+class GitCpTest(unittest.TestCase):
+    def testCp(self):
+        pass
+
+def do(proc_args, message, options, input = None):
+	if message and options.verbose:
+		print "*** %s ***" % message
+
+	if options.verbose:
+		if input:
+			print 'standard input: '
+			print input
+		print ' '.join(proc_args)
+
+	if not options.dry:
+		proc = Popen(proc_args, stdout=PIPE, stdin=PIPE) 
+		result = proc.communicate(input)[0]
+		if options.verbose: print result
+
+	return result
+
+def make_tree(blob_id, filename, options):
+    global git_cmd
+
+    # Get the tree of HEAD
+    lstree = do(git_cmd + ['ls-tree', '-z', 'HEAD'], None, options).strip().\
+            split('\0')
+    # Remove empty lines
+    lstree = [line for line in lstree if line]
+    # Parse each lines
+    lstree_pattern = '([0-9]*?) (blob|tree) ([0-9a-f]{40})\t(.*)'
+    files = [re.match(lstree_pattern, line).groups() for line in lstree]
+    # Remove duplicated file
+    files = [item for item in files if item[3] != filename]
+    # Add new blob
+    files += [('100644', 'blob', blob_id, filename)]
+    # Sort the blobs by filename
+    files.sort(None, lambda item: item[3])
+    # Formatting
+    files = [' '.join(item[:3]) + '\t' + item[3] for item in files]
+    # Make the tree
+    tree_id = do(git_cmd + ['mktree', '-z'], None, options, '\0'.join(files)).\
+            strip()
+
+    return tree_id
+
+def commit(tree_id, message, options = None):
+    global git_cmd, git_dir
+
+    master = os.path.join(git_dir, 'refs', 'heads', 'master')
+    if os.path.isfile(master):
+        parent_id = open(master).read().strip()
+        if not parent_id:
+            raise Exception("Invalid HEAD")
+        parent_param = ['-p', parent_id]
+    else:
+        parent_param = []
+    commit_id = do(git_cmd + ['commit-tree', tree_id] + parent_param +
+            ['-m', message], None, options).strip()
+    open(master, 'w').write(commit_id)
+
+    return commit_id
+
+
+def cp(src, dest, options):
+    global git_dir, git_cmd
+
+    git_dir = dest
+
+    git_cmd = ['git', '--git-dir=' + git_dir]
+
+    # Make a blob object
+    blob_id = do(git_cmd + ['hash-object', '-t', 'blob', '-w', '--', src],
+            None, options).strip()
+
+    # Make a tree
+    filename = os.path.basename(src)
+    tree_id = make_tree(blob_id, filename, options)
+    if not tree_id:
+        return 127
+
+    # commit
+    commit_id = commit(tree_id, 'copy ' + src, options)
+
+    return 0
+
+def main():
+    """ main function """
+
+    parser = OptionParser()
+    parser.usage = '%prog [options]... <src> <dest>'
+    parser.add_option("-d", "--dry", action="store_true", dest="dry",
+            default=False, help="Dry run")
+    parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
+            default=False, help="explain what is being done")
+    options, args = parser.parse_args()
+    options.dry = False
+
+    if len(args) > 1:
+        return cp(args[0], args[1], options)
+    else:
+        parser.print_help()
+        return 1
+
+if __name__ == '__main__':
+    main()
