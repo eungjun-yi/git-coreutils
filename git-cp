@@ -28,7 +28,7 @@ def do(proc_args, message, options, input = None):
 
 	return result
 
-def make_tree(blob_id, filename, options):
+def make_tree(tree, options):
     global git_cmd
 
     # Get the tree of HEAD
@@ -40,9 +40,9 @@ def make_tree(blob_id, filename, options):
     lstree_pattern = '([0-9]*?) (blob|tree) ([0-9a-f]{40})\t(.*)'
     files = [re.match(lstree_pattern, line).groups() for line in lstree]
     # Remove duplicated file
-    files = [item for item in files if item[3] != filename]
+    files = [item for item in files if not item[3] in tree.values()]
     # Add new blob
-    files += [('100644', 'blob', blob_id, filename)]
+    files += [('100644', 'blob', blob_id, tree[blob_id]) for blob_id in tree]
     # Sort the blobs by filename
     files.sort(None, lambda item: item[3])
     # Formatting
@@ -71,20 +71,23 @@ def commit(tree_id, message, options = None):
     return commit_id
 
 
-def cp(src, dest, options):
+def cp(srcs, dest, options):
     global git_dir, git_cmd
 
     git_dir = dest
 
     git_cmd = ['git', '--git-dir=' + git_dir]
 
-    # Make a blob object
-    blob_id = do(git_cmd + ['hash-object', '-t', 'blob', '-w', '--', src],
-            None, options).strip()
+    # Make a blob object and put it into tree map
+    tree = {}
+    for src in srcs:
+        blob_id = do(git_cmd + ['hash-object', '-t', 'blob', '-w', '--', src],
+                None, options).strip()
+        filename = os.path.basename(src)
+        tree[blob_id] = filename
 
-    # Make a tree
-    filename = os.path.basename(src)
-    tree_id = make_tree(blob_id, filename, options)
+    # Make a tree object with tree map
+    tree_id = make_tree(tree, options)
     if not tree_id:
         return 127
 
@@ -97,7 +100,9 @@ def main():
     """ main function """
 
     parser = OptionParser()
-    parser.usage = '%prog [options]... <src> <dest>'
+    parser.usage =
+        '%prog [options]... <src> <dest>\n' +
+        '    or: %prog [options]... <src>... <directory>'
     parser.add_option("-d", "--dry", action="store_true", dest="dry",
             default=False, help="Dry run")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
@@ -106,7 +111,7 @@ def main():
     options.dry = False
 
     if len(args) > 1:
-        return cp(args[0], args[1], options)
+        return cp(args[:-1], args[-1], options)
     else:
         parser.print_help()
         return 1
