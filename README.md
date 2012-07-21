@@ -3,8 +3,8 @@ Git Coreutils
 
 Coreutils for Git repository. They work on bare repository.
 
-Installtion
------------
+Installation
+------------
 
 Put them all into any directory in PATH. e.g.) /usr/bin
 
