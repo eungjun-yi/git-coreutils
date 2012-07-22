@@ -100,8 +100,8 @@ def main():
     """ main function """
 
     parser = OptionParser()
-    parser.usage =
-        '%prog [options]... <src> <dest>\n' +
+    parser.usage = \
+        '%prog [options]... <src> <dest>\n' + \
         '    or: %prog [options]... <src>... <directory>'
     parser.add_option("-d", "--dry", action="store_true", dest="dry",
             default=False, help="Dry run")
